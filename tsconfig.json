@@ -1,0 +1,33 @@
+{
+    "compilerOptions": {
+        "baseUrl": "./src",
+        "target": "es5",
+        "module": "amd",
+        "moduleResolution": "node",
+        "isolatedModules": false,
+        "jsx": "react",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "declaration": false,
+        "noImplicitAny": true,
+        "noImplicitUseStrict": false,
+        "removeComments": true,
+        "noLib": false,
+        "preserveConstEnums": true,
+        "suppressImplicitAnyIndexErrors": true,
+        "rootDir": "src",
+        "outFile": "release/assets/js/app.js",
+        "strictNullChecks": true,
+        "noImplicitThis": true
+    },
+    "exclude": [
+        "node_modules",
+        "typings/browser",
+        "typings/browser.d.ts"
+    ],
+    "compileOnSave": true,
+    "buildOnSave": true,
+    "atom": {
+        "rewriteTsconfig": false
+    }
+}
