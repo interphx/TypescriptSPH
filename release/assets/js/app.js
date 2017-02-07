@@ -759,17 +759,18 @@ define("app", ["require", "exports"], function (require, exports) {
         var pourThrottle = 1 / 30;
         var pourTime = Infinity;
         var onPointerDown = function (event) {
-            mouseX = (event.clientX - event.target.offsetLeft);
-            mouseY = (event.clientY - event.target.offsetTop);
+            event.preventDefault();
+            mouseX = (event.clientX || event.touches[0].clientX - event.target.offsetLeft);
+            mouseY = (event.clientY || event.touches[0].clientY - event.target.offsetTop);
             pourTime = 0;
         };
         var onPointerMove = function (event) {
-            mouseX = (event.clientX - event.target.offsetLeft);
-            mouseY = (event.clientY - event.target.offsetTop);
+            mouseX = (event.clientX || event.touches[0].clientX - event.target.offsetLeft);
+            mouseY = (event.clientY || event.touches[0].clientY - event.target.offsetTop);
         };
         var onPointerUp = function (event) {
-            mouseX = (event.clientX - event.target.offsetLeft);
-            mouseY = (event.clientY - event.target.offsetTop);
+            mouseX = (event.clientX || event.touches[0].clientX - event.target.offsetLeft);
+            mouseY = (event.clientY || event.touches[0].clientY - event.target.offsetTop);
             pourTime = Infinity;
         };
         canvas.addEventListener('mousedown', onPointerDown);

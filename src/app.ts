@@ -915,20 +915,22 @@ function main() {
     var pourThrottle: number = 1 / 30;
     var pourTime: number = Infinity;
 
-    var onPointerDown = function(event: MouseEvent) {
-      mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
-      mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
+    var onPointerDown = function(event: any) {
+      event.preventDefault();
+
+      mouseX = (event.clientX || event.touches[0].clientX - (event.target as HTMLElement).offsetLeft);
+      mouseY = (event.clientY || event.touches[0].clientY - (event.target as HTMLElement).offsetTop);
       pourTime = 0;
     };
 
-    var onPointerMove = function(event: MouseEvent) {
-      mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
-      mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
+    var onPointerMove = function(event: any) {
+      mouseX = (event.clientX || event.touches[0].clientX - (event.target as HTMLElement).offsetLeft);
+      mouseY = (event.clientY || event.touches[0].clientY - (event.target as HTMLElement).offsetTop);
     };
 
-    var onPointerUp = function(event: MouseEvent) {
-      mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
-      mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
+    var onPointerUp = function(event: any) {
+      mouseX = (event.clientX || event.touches[0].clientX - (event.target as HTMLElement).offsetLeft);
+      mouseY = (event.clientY || event.touches[0].clientY - (event.target as HTMLElement).offsetTop);
       pourTime = Infinity;
     };
 
@@ -937,7 +939,7 @@ function main() {
 
     canvas.addEventListener('mousemove', onPointerMove);
     canvas.addEventListener('touchmove', onPointerMove);
-    
+
     canvas.addEventListener('mouseup', onPointerUp);
     canvas.addEventListener('touchend', onPointerUp);
 
