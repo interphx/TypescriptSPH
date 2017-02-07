@@ -914,20 +914,32 @@ function main() {
     var mouseY: number = -1;
     var pourThrottle: number = 1 / 30;
     var pourTime: number = Infinity;
-    canvas.addEventListener('mousedown', function(event: MouseEvent) {
+
+    var onPointerDown = function(event: MouseEvent) {
       mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
       mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
       pourTime = 0;
-    });
-    canvas.addEventListener('mousemove', function(event: MouseEvent) {
+    };
+
+    var onPointerMove = function(event: MouseEvent) {
       mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
       mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
-    });
-    canvas.addEventListener('mouseup', function(event: MouseEvent) {
+    };
+
+    var onPointerUp = function(event: MouseEvent) {
       mouseX = (event.clientX - (event.target as HTMLElement).offsetLeft);
       mouseY = (event.clientY - (event.target as HTMLElement).offsetTop);
       pourTime = Infinity;
-    });
+    };
+
+    canvas.addEventListener('mousedown', onPointerDown);
+    canvas.addEventListener('touchstart', onPointerDown);
+
+    canvas.addEventListener('mousemove', onPointerMove);
+    canvas.addEventListener('touchmove', onPointerMove);
+    
+    canvas.addEventListener('mouseup', onPointerUp);
+    canvas.addEventListener('touchend', onPointerUp);
 
     var sphSimulator = new SPHSimulator();
     var particleRenderer = new SPHRenderer(context);

@@ -758,20 +758,26 @@ define("app", ["require", "exports"], function (require, exports) {
         var mouseY = -1;
         var pourThrottle = 1 / 30;
         var pourTime = Infinity;
-        canvas.addEventListener('mousedown', function (event) {
+        var onPointerDown = function (event) {
             mouseX = (event.clientX - event.target.offsetLeft);
             mouseY = (event.clientY - event.target.offsetTop);
             pourTime = 0;
-        });
-        canvas.addEventListener('mousemove', function (event) {
+        };
+        var onPointerMove = function (event) {
             mouseX = (event.clientX - event.target.offsetLeft);
             mouseY = (event.clientY - event.target.offsetTop);
-        });
-        canvas.addEventListener('mouseup', function (event) {
+        };
+        var onPointerUp = function (event) {
             mouseX = (event.clientX - event.target.offsetLeft);
             mouseY = (event.clientY - event.target.offsetTop);
             pourTime = Infinity;
-        });
+        };
+        canvas.addEventListener('mousedown', onPointerDown);
+        canvas.addEventListener('touchstart', onPointerDown);
+        canvas.addEventListener('mousemove', onPointerMove);
+        canvas.addEventListener('touchmove', onPointerMove);
+        canvas.addEventListener('mouseup', onPointerUp);
+        canvas.addEventListener('touchend', onPointerUp);
         var sphSimulator = new SPHSimulator();
         var particleRenderer = new SPHRenderer(context);
         function fixedUpdate(dt) {
