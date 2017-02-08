@@ -1,337 +1,15 @@
-define("gridsolver", ["require", "exports"], function (require, exports) {
+define("boxblur", ["require", "exports"], function (require, exports) {
     "use strict";
-    function createArray(value, size) {
-        var result = new Array(size);
-        for (var i = 0; i < size; ++i) {
-            result[i] = value;
-        }
-        return result;
-    }
-    var GridSolver = (function () {
-        function GridSolver(width, height) {
-            this.width = width;
-            this.height = height;
-            this.viscosity = 0;
-            this.diff = 0;
-            this.widthPlusTwo = width + 2;
-            this.heightPlusTwo = height + 2;
-            this.size = this.widthPlusTwo * this.heightPlusTwo;
-            this.u = createArray(0, this.size);
-            this.v = createArray(0, this.size);
-            this.uPrev = createArray(0, this.size);
-            this.vPrev = createArray(0, this.size);
-            this.density = createArray(0, this.size);
-            this.densityPrev = createArray(0, this.size);
-            this.idx = this.idx.bind(this);
-        }
-        GridSolver.prototype.idx = function (i, j) {
-            return j * this.widthPlusTwo + i;
-        };
-        GridSolver.prototype.applySources = function (x, sources, dt) {
-            for (var i = 0; i < this.size; ++i) {
-                x[i] += sources[i] * dt;
-            }
-        };
-        GridSolver.prototype.advect = function (b, d, d0, u, v, dt) {
-            var dt0 = dt * this.width;
-            for (var i = 1; i <= this.width; ++i) {
-                for (var j = 1; j <= this.height; ++j) {
-                    var x = i - dt0 * u[j * this.widthPlusTwo + i];
-                    var y = j - dt0 * v[j * this.widthPlusTwo + i];
-                    if (x < 0.5)
-                        x = 0.5;
-                    if (x > this.width + 0.5)
-                        x = this.width + 0.5;
-                    var i0 = x | 0;
-                    var i1 = i0 + 1;
-                    if (y < 0.5)
-                        y = 0.5;
-                    if (y > this.height + 0.5)
-                        y = this.height + 0.5;
-                    var j0 = y | 0;
-                    var j1 = j0 + 1;
-                    var s1 = x - i0;
-                    var s0 = 1 - s1;
-                    var t1 = y - j0;
-                    var t0 = 1 - t1;
-                    d[j * this.widthPlusTwo + i] =
-                        s0 * (t0 * d0[j0 * this.widthPlusTwo + i0] + t1 * d0[j1 * this.widthPlusTwo + i0]) +
-                            s1 * (t0 * d0[j0 * this.widthPlusTwo + i1] + t1 * d0[j1 * this.widthPlusTwo + i1]);
-                }
-            }
-            this.setBoundary(b, d);
-        };
-        GridSolver.prototype.densityStep = function (x, x0, u, v, diff, dt) {
-            this.applySources(x, x0, dt);
-            var tmp = x0;
-            x0 = x;
-            x = tmp;
-            this.diffuse(0, x, x0, diff, dt);
-            var tmp = x0;
-            x0 = x;
-            x = tmp;
-            this.advect(0, x, x0, u, v, dt);
-        };
-        GridSolver.prototype.velocityStep = function (u, v, u0, v0, viscosity, dt) {
-            this.applySources(u, u0, dt);
-            this.applySources(v, v0, dt);
-            var tmp = u0;
-            u0 = u;
-            u = tmp;
-            this.diffuse(1, u, u0, viscosity, dt);
-            var tmp = v0;
-            v0 = v;
-            v = tmp;
-            this.diffuse(2, v, v0, viscosity, dt);
-            this.project(u, v, u0, v0);
-            var tmp = u0;
-            u0 = u;
-            u = tmp;
-            var tmp = v0;
-            v0 = v;
-            v = tmp;
-            this.advect(1, u, u0, u0, v0, dt);
-            this.advect(2, v, v0, u0, v0, dt);
-            this.project(u, v, u0, v0);
-        };
-        GridSolver.prototype.project = function (u, v, p, div) {
-            var idx = this.idx;
-            for (var i = 1; i <= this.width; i++) {
-                var prevRow = idx(i - 1, 0);
-                var thisRow = idx(i, 0);
-                var nextRow = idx(i + 1, 0);
-                var valueBefore = thisRow - 1;
-                var valueNext = thisRow + 1;
-                var to = this.width + valueNext;
-                for (var k = valueNext; k < to; k++) {
-                    p[k] = 0;
-                    div[k] = (u[++valueNext] - u[++valueBefore] + v[++nextRow] - v[++prevRow]) * this.centerPos;
-                }
-            }
-            this.set_bnd(0, div);
-            this.set_bnd(0, p);
-            for (k = 0; k < this.settings.iterations; k++) {
-                for (j = 1; j <= this.settings.resolution; j++) {
-                    lastRow = this.IX[0][j - 1];
-                    thisRow = this.IX[0][j];
-                    nextRow = this.IX[0][j + 1];
-                    prevX = p[thisRow];
-                    thisRow++;
-                    for (i = 1; i <= this.settings.resolution; i++) {
-                        p[thisRow] = prevX = (div[thisRow] + p[++lastRow] + p[++thisRow] + p[++nextRow] + prevX) * this.settings.fract;
-                    }
-                }
-                this.set_bnd(0, p);
-            }
-            for (j = 1; j <= this.settings.resolution; j++) {
-                lastRow = this.IX[0][j - 1];
-                thisRow = this.IX[0][j];
-                nextRow = this.IX[0][j + 1];
-                valueBefore = thisRow - 1;
-                valueNext = thisRow + 1;
-                for (i = 1; i <= this.settings.resolution; i++) {
-                    u[++thisRow] -= this.scale * (p[++valueNext] - p[++valueBefore]);
-                    v[thisRow] -= this.scale * (p[++nextRow] - p[++lastRow]);
-                }
-            }
-            this.set_bnd(1, u);
-            this.set_bnd(2, v);
-            this.setBoundary(1, u);
-            this.setBoundary(2, v);
-        };
-        GridSolver.prototype.setBoundary = function (b, x) {
-            var idx = this.idx;
-            for (var i = 1; i <= this.width; ++i) {
-                x[idx(0, i)] = b === 1 ? -x[idx(1, i)] : x[idx(1, i)];
-                x[idx(this.width + 1, i)] = b === 1 ? -x[idx(this.width, i)] : x[idx(this.width, i)];
-                x[idx(i, 0)] = b === 2 ? -x[idx(i, 1)] : x[idx(i, 1)];
-                x[idx(i, this.height + 1)] = b === 2 ? -x[idx(i, this.height)] : x[idx(i, this.height)];
-            }
-            x[idx(0, 0)] = 0.5 * (x[idx(1, 0)] + x[idx(0, 1)]);
-            x[idx(0, this.height + 1)] = 0.5 * (x[idx(1, this.height + 1)] + x[idx(0, this.height)]);
-            x[idx(this.width + 1, 0)] = 0.5 * (x[idx(this.width, 0)] + x[idx(this.width + 1, 1)]);
-            x[idx(this.width + 1, this.height + 1)] = 0.5 * (x[idx(this.width, this.height + 1)] + x[idx(this.width + 1, this.height)]);
-        };
-        GridSolver.prototype.diffuse = function (b, x, x0, diff, dt) {
-            for (var i = 1; i < this.size; ++i) {
-                x[i] = x0[i] * 1;
-            }
-            this.setBoundary(b, x);
-        };
-        GridSolver.prototype.update = function (dt) {
-            this.velocityStep(this.u, this.v, this.uPrev, this.vPrev, this.viscosity, dt);
-            this.densityStep(this.density, this.densityPrev, this.u, this.v, this.diff, dt);
-        };
-        return GridSolver;
-    }());
-    exports.GridSolver = GridSolver;
-});
-define("app", ["require", "exports"], function (require, exports) {
-    "use strict";
-    var getBallImage = (function () {
-        var cache = {};
-        function getBallImage(goo, radius) {
-            if (!cache[goo]) {
-                cache[goo] = {};
-            }
-            if (!cache[goo][radius]) {
-                var width = radius * 2;
-                var height = radius * 2;
-                var canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                var ctx = canvas.getContext('2d');
-                var imageData = ctx.getImageData(0, 0, width, height);
-                var data = imageData.data;
-                for (var y = 0; y < height; ++y) {
-                    for (var x = 0; x < width; ++x) {
-                        var index = (y * width + x) * 4;
-                        var distanceToBall = Math.sqrt(Math.pow(x - radius, 2) + Math.pow(y - radius, 2));
-                        var intensity = Math.pow(Math.max(0, (1 - distanceToBall / radius)), goo) * 255;
-                        data[index] = 0;
-                        data[index + 1] = 0;
-                        data[index + 2] = 255;
-                        data[index + 3] = Math.floor(intensity);
-                    }
-                }
-                ctx.putImageData(imageData, 0, 0);
-                cache[goo][radius] = canvas;
-            }
-            return cache[goo][radius];
-        }
-        return getBallImage;
-    })();
-    var MetaballsSim = (function () {
-        function MetaballsSim(context, width, height, balls) {
-            this.context = context;
-            this.width = width;
-            this.height = height;
-            this.balls = balls;
-        }
-        MetaballsSim.prototype.update = function (dt) {
-            for (var i = 0; i < this.balls.length; ++i) {
-                var ball = this.balls[i];
-                ball.centerX += ball.velocityX * dt;
-                ball.centerY += ball.velocityY * dt;
-                if (ball.centerY - ball.radius < 0 && ball.velocityY < 0) {
-                    ball.velocityY = -ball.velocityY;
-                    ball.centerY = ball.radius;
-                }
-                if (ball.centerY + ball.radius > this.height && ball.velocityY > 0) {
-                    ball.velocityY = -ball.velocityY;
-                    ball.centerY = this.height - ball.radius;
-                }
-                if (ball.centerX - ball.radius < 0 && ball.velocityX < 0) {
-                    ball.velocityX = -ball.velocityX;
-                    ball.centerX = ball.radius;
-                }
-                if (ball.centerX + ball.radius > this.width && ball.velocityX > 0) {
-                    ball.velocityX = -ball.velocityX;
-                    ball.centerX = this.width - ball.radius;
-                }
-            }
-        };
-        MetaballsSim.prototype.render = function () {
-            var threshold = 0.3;
-            var goo = 1.7;
-            var thresholdBallConst = -(Math.pow(threshold, 1 / goo) - 1);
-            var colorThreshold = threshold * 255;
-            this.context.save();
-            this.context.fillStyle = '#0000FF';
-            this.context.strokeStyle = 'transparent';
-            for (var _i = 0, _a = this.balls; _i < _a.length; _i++) {
-                var ball = _a[_i];
-                if (!ball._cachedImage) {
-                    ball._cachedImage = getBallImage(goo, ball.radius);
-                }
-                this.context.drawImage(ball._cachedImage, (ball.centerX - ball.radius) | 0, (ball.centerY - ball.radius) | 0);
-            }
-            this.context.restore();
-        };
-        return MetaballsSim;
-    }());
     var mul_table = [1, 57, 41, 21, 203, 34, 97, 73, 227, 91, 149, 62, 105, 45, 39, 137, 241, 107, 3, 173, 39, 71, 65, 238, 219, 101, 187, 87, 81, 151, 141, 133, 249, 117, 221, 209, 197, 187, 177, 169, 5, 153, 73, 139, 133, 127, 243, 233, 223, 107, 103, 99, 191, 23, 177, 171, 165, 159, 77, 149, 9, 139, 135, 131, 253, 245, 119, 231, 224, 109, 211, 103, 25, 195, 189, 23, 45, 175, 171, 83, 81, 79, 155, 151, 147, 9, 141, 137, 67, 131, 129, 251, 123, 30, 235, 115, 113, 221, 217, 53, 13, 51, 50, 49, 193, 189, 185, 91, 179, 175, 43, 169, 83, 163, 5, 79, 155, 19, 75, 147, 145, 143, 35, 69, 17, 67, 33, 65, 255, 251, 247, 243, 239, 59, 29, 229, 113, 111, 219, 27, 213, 105, 207, 51, 201, 199, 49, 193, 191, 47, 93, 183, 181, 179, 11, 87, 43, 85, 167, 165, 163, 161, 159, 157, 155, 77, 19, 75, 37, 73, 145, 143, 141, 35, 138, 137, 135, 67, 33, 131, 129, 255, 63, 250, 247, 61, 121, 239, 237, 117, 29, 229, 227, 225, 111, 55, 109, 216, 213, 211, 209, 207, 205, 203, 201, 199, 197, 195, 193, 48, 190, 47, 93, 185, 183, 181, 179, 178, 176, 175, 173, 171, 85, 21, 167, 165, 41, 163, 161, 5, 79, 157, 78, 154, 153, 19, 75, 149, 74, 147, 73, 144, 143, 71, 141, 140, 139, 137, 17, 135, 134, 133, 66, 131, 65, 129, 1];
     var shg_table = [0, 9, 10, 10, 14, 12, 14, 14, 16, 15, 16, 15, 16, 15, 15, 17, 18, 17, 12, 18, 16, 17, 17, 19, 19, 18, 19, 18, 18, 19, 19, 19, 20, 19, 20, 20, 20, 20, 20, 20, 15, 20, 19, 20, 20, 20, 21, 21, 21, 20, 20, 20, 21, 18, 21, 21, 21, 21, 20, 21, 17, 21, 21, 21, 22, 22, 21, 22, 22, 21, 22, 21, 19, 22, 22, 19, 20, 22, 22, 21, 21, 21, 22, 22, 22, 18, 22, 22, 21, 22, 22, 23, 22, 20, 23, 22, 22, 23, 23, 21, 19, 21, 21, 21, 23, 23, 23, 22, 23, 23, 21, 23, 22, 23, 18, 22, 23, 20, 22, 23, 23, 23, 21, 22, 20, 22, 21, 22, 24, 24, 24, 24, 24, 22, 21, 24, 23, 23, 24, 21, 24, 23, 24, 22, 24, 24, 22, 24, 24, 22, 23, 24, 24, 24, 20, 23, 22, 23, 24, 24, 24, 24, 24, 24, 24, 23, 21, 23, 22, 23, 24, 24, 24, 22, 24, 24, 24, 23, 22, 24, 24, 25, 23, 25, 25, 23, 24, 25, 25, 24, 22, 25, 25, 25, 24, 23, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 23, 25, 23, 24, 25, 25, 25, 25, 25, 25, 25, 25, 25, 24, 22, 25, 25, 23, 25, 25, 20, 24, 25, 24, 25, 25, 22, 24, 25, 24, 25, 24, 25, 25, 24, 25, 25, 25, 25, 22, 25, 25, 25, 24, 25, 24, 25, 18];
-    function blurAlpha(canvas, radius, iterations) {
-        if (isNaN(radius) || radius < 1)
-            return;
-        radius |= 0;
-        if (isNaN(iterations))
-            iterations = 1;
-        iterations |= 0;
-        var context = canvas.getContext("2d");
-        var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        var pixels = imageData.data;
-        var asum;
-        var wm = canvas.width - 1;
-        var hm = canvas.height - 1;
-        var wh = canvas.width * canvas.height;
-        var radiusPlusOne = radius + 1;
-        var mul_sum = mul_table[radius];
-        var shg_sum = shg_table[radius];
-        var a = [];
-        var vmin = [];
-        var vmax = [];
-        var yw, yi;
-        while (iterations-- > 0) {
-            yw = yi = 0;
-            for (var y = 0; y < canvas.height; y++) {
-                asum = pixels[yw + 3] * radiusPlusOne;
-                for (var i = 1; i <= radius; i++) {
-                    var p = yw + (((i > wm ? wm : i)) << 2);
-                    asum += pixels[p];
-                }
-                for (var x = 0; x < canvas.width; x++) {
-                    a[yi] = asum;
-                    if (y === 0) {
-                        vmin[x] = ((p = x + radiusPlusOne) < wm ? p : wm) << 2;
-                        vmax[x] = ((p = x - radius) > 0 ? p << 2 : 0);
-                    }
-                    var p1 = yw + vmin[x];
-                    var p2 = yw + vmax[x];
-                    p1 += 3;
-                    p2 += 3;
-                    asum += pixels[p1] - pixels[p2];
-                    yi++;
-                }
-                yw += (canvas.width << 2);
-            }
-            for (var x = 0; x < canvas.width; x++) {
-                var yp = x;
-                asum = a[yp] * radiusPlusOne;
-                for (i = 1; i <= radius; i++) {
-                    yp += (i > hm ? 0 : canvas.width);
-                    asum += a[yp];
-                }
-                yi = x << 2;
-                for (var y = 0; y < canvas.height; y++) {
-                    var pa;
-                    pixels[yi + 3] = pa = (asum * mul_sum) >>> shg_sum;
-                    if (x == 0) {
-                        vmin[y] = ((p = y + radiusPlusOne) < hm ? p : hm) * canvas.width;
-                        vmax[y] = ((p = y - radius) > 0 ? p * canvas.width : 0);
-                    }
-                    p1 = x + vmin[y];
-                    p2 = x + vmax[y];
-                    asum += a[p1] - a[p2];
-                    yi += canvas.width << 2;
-                }
-            }
-        }
-        context.putImageData(imageData, 0, 0);
-    }
-    function boxBlurCanvasRGBA(canvas, radius, iterations) {
+    function boxBlurImageData(imageData, width, height, radius, iterations) {
         radius |= 0;
         iterations |= 0;
         if (iterations > 3)
             iterations = 3;
         if (iterations < 1)
             iterations = 1;
-        var context = canvas.getContext("2d");
         var imageData;
-        var width = canvas.width;
-        var height = canvas.height;
-        imageData = context.getImageData(0, 0, width, height);
         var pixels = imageData.data;
         var rsum, gsum, bsum, asum, x, y, i, p, p1, p2, yp, yi, yw, idx, pa;
         var wm = width - 1;
@@ -418,8 +96,44 @@ define("app", ["require", "exports"], function (require, exports) {
                 }
             }
         }
-        context.putImageData(imageData, 0, 0);
     }
+    exports.boxBlurImageData = boxBlurImageData;
+});
+define("app", ["require", "exports", "boxblur"], function (require, exports, boxblur_1) {
+    "use strict";
+    var getBallImage = (function () {
+        var cache = {};
+        function getBallImage(goo, radius) {
+            if (!cache[goo]) {
+                cache[goo] = {};
+            }
+            if (!cache[goo][radius]) {
+                var width = radius * 2;
+                var height = radius * 2;
+                var canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                var ctx = canvas.getContext('2d');
+                var imageData = ctx.getImageData(0, 0, width, height);
+                var data = imageData.data;
+                for (var y = 0; y < height; ++y) {
+                    for (var x = 0; x < width; ++x) {
+                        var index = (y * width + x) * 4;
+                        var distanceToBall = Math.sqrt(Math.pow(x - radius, 2) + Math.pow(y - radius, 2));
+                        var intensity = Math.pow(Math.max(0, (1 - distanceToBall / radius)), goo) * 255;
+                        data[index] = 0;
+                        data[index + 1] = 0;
+                        data[index + 2] = 255;
+                        data[index + 3] = Math.floor(intensity);
+                    }
+                }
+                ctx.putImageData(imageData, 0, 0);
+                cache[goo][radius] = canvas;
+            }
+            return cache[goo][radius];
+        }
+        return getBallImage;
+    })();
     var SPHRenderer = (function () {
         function SPHRenderer(context) {
             this.context = context;
@@ -444,7 +158,9 @@ define("app", ["require", "exports"], function (require, exports) {
             this.contextB.drawImage(this.bufferA, 0, 0);
             this.contextA.clearRect(0, 0, this.bufferA.width, this.bufferA.height);
             this.contextA.drawImage(this.bufferB, 0, 0);
-            boxBlurCanvasRGBA(this.bufferA, 12 * this.scale, 1);
+            var imageData = this.contextA.getImageData(0, 0, this.bufferA.width, this.bufferA.height);
+            boxblur_1.boxBlurImageData(imageData, this.bufferA.width, this.bufferA.height, 16 * this.scale, 1);
+            this.contextA.putImageData(imageData, 0, 0);
             for (var _i = 0, particles_1 = particles; _i < particles_1.length; _i++) {
                 var particle = particles_1[_i];
                 var x = particle.x * this.scale;
@@ -625,7 +341,6 @@ define("app", ["require", "exports"], function (require, exports) {
                 }
             }
             tempNeighbors.length = nextAddedIndex;
-            originParticle.neighborsCount = tempNeighbors.length;
             return tempNeighbors;
         };
         SPHSimulator.prototype.doubleDensityRelax = function (dt) {
@@ -779,8 +494,12 @@ define("app", ["require", "exports"], function (require, exports) {
         canvas.addEventListener('touchmove', onPointerMove);
         canvas.addEventListener('mouseup', onPointerUp);
         canvas.addEventListener('touchend', onPointerUp);
+        canvas.addEventListener('touchcancel', onPointerUp);
         var sphSimulator = new SPHSimulator();
         var particleRenderer = new SPHRenderer(context);
+        for (var i = 0; i < 300; ++i) {
+            sphSimulator.addParticle(Math.random() * canvas.width, Math.random() * canvas.height, 0, 0);
+        }
         function fixedUpdate(dt) {
             sphSimulator.update(dt);
         }
@@ -789,19 +508,36 @@ define("app", ["require", "exports"], function (require, exports) {
             context.fillStyle = 'white';
             context.clearRect(0, 0, canvas.width, canvas.height);
             particleRenderer.render(sphSimulator.particles);
-            context.strokeStyle = 'white';
-            context.fillStyle = 'transparent';
-            for (var i = 0; i < sphSimulator.spaceSize; ++i) {
-                var x = (i % sphSimulator.spaceWidth) * sphSimulator.spaceCellSize;
-                var y = Math.floor(i / sphSimulator.spaceWidth) * sphSimulator.spaceCellSize;
-                context.strokeText(sphSimulator.space[i].length.toString(), x + sphSimulator.spaceCellSize / 2, y + sphSimulator.spaceCellSize / 2);
-            }
         }
+        var FPSCounter = (function () {
+            function FPSCounter() {
+                this.framesPassed = 0;
+                this.lastTime = -Infinity;
+                this.fps = 0;
+            }
+            FPSCounter.prototype.tick = function () {
+                this.framesPassed += 1;
+                var time = +new Date();
+                if (time - this.lastTime >= 1000) {
+                    this.fps = this.framesPassed;
+                    this.framesPassed = 0;
+                    this.lastTime = time;
+                }
+            };
+            FPSCounter.prototype.getFPS = function () {
+                return this.fps;
+            };
+            return FPSCounter;
+        }());
+        var fpsCounter = new FPSCounter();
+        var infoDiv = document.getElementById('info');
         var accumulator = 0;
         var fixedDelta = 1 / 30;
         var maxDelta = 0.25;
         var t0 = +new Date();
         function update() {
+            fpsCounter.tick();
+            infoDiv.textContent = 'FPS: ' + fpsCounter.getFPS().toString();
             var t1 = +new Date();
             var dt = (t1 - t0) / 1000;
             if (dt >= maxDelta) {
@@ -814,11 +550,13 @@ define("app", ["require", "exports"], function (require, exports) {
                 sphSimulator.addParticle(mouseX, mouseY, 0, 0);
                 pourTime = pourThrottle;
             }
-            while (accumulator >= fixedDelta) {
-                fixedUpdate(fixedDelta);
-                accumulator -= fixedDelta;
+            if (accumulator >= fixedDelta) {
+                while (accumulator >= fixedDelta) {
+                    fixedUpdate(fixedDelta);
+                    accumulator -= fixedDelta;
+                }
+                render();
             }
-            render();
             requestFrame(update);
         }
         requestFrame(update);
