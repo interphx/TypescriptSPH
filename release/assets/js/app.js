@@ -146,7 +146,8 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
             this.bufferA.width = this.bufferB.width = context.canvas.width * this.scale;
             this.bufferA.height = this.bufferB.height = context.canvas.height * this.scale;
         }
-        SPHRenderer.prototype.render = function (particles) {
+        SPHRenderer.prototype.render = function (simulator) {
+            var particles = simulator.particles;
             var threshold = 0.1;
             var goo = 1.3;
             var thresholdBallConst = -(Math.pow(threshold, 1 / goo) - 1);
@@ -239,8 +240,64 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
             var spaceCellIndex = (spaceCellY * this.spaceWidth + spaceCellX) | 0;
             return spaceCellIndex;
         };
+        SPHSimulator.prototype.placeParticle = function (particle, cell) {
+            cell.push(particle);
+        };
+        SPHSimulator.prototype.removeParticle = function (particle, cell) {
+            var idx = cell.indexOf(particle);
+            cell[idx] = cell[cell.length - 1];
+            cell.length -= 1;
+        };
+        SPHSimulator.prototype.withParticleAndNeighborhood = function (particle, cellX, cellY, op) {
+            var space = this.space;
+            var spaceWidth = this.spaceWidth;
+            var spaceSize = this.spaceSize;
+            var cellIndex = cellY * spaceWidth + cellX;
+            var cellYMulWidth = cellY * spaceWidth;
+            var leftCellX = cellX - 1;
+            var rightCellX = cellX + 1;
+            var topCellYMulWidth = (cellY - 1) * spaceWidth;
+            var bottomCellYMulWidth = (cellY + 1) * spaceWidth;
+            var centerIndex = cellIndex;
+            var topIndex = topCellYMulWidth + cellX;
+            var rightIndex = cellYMulWidth + rightCellX;
+            var bottomIndex = bottomCellYMulWidth + cellX;
+            var leftIndex = cellYMulWidth + leftCellX;
+            var topLeftIndex = topCellYMulWidth + leftCellX;
+            var topRightIndex = topCellYMulWidth + rightCellX;
+            var bottomRightIndex = bottomCellYMulWidth + rightCellX;
+            var bottomLeftIndex = bottomCellYMulWidth + leftCellX;
+            op(particle, space[centerIndex]);
+            if (topIndex >= 0 && topIndex < spaceSize) {
+                op(particle, space[topIndex]);
+            }
+            if (rightIndex >= 0 && rightIndex < spaceSize) {
+                op(particle, space[rightIndex]);
+            }
+            if (bottomIndex >= 0 && bottomIndex < spaceSize) {
+                op(particle, space[bottomIndex]);
+            }
+            if (leftIndex >= 0 && leftIndex < spaceSize) {
+                op(particle, space[leftIndex]);
+            }
+            if (topLeftIndex >= 0 && topLeftIndex < spaceSize) {
+                op(particle, space[topLeftIndex]);
+            }
+            if (topRightIndex >= 0 && topRightIndex < spaceSize) {
+                op(particle, space[topRightIndex]);
+            }
+            if (bottomRightIndex >= 0 && bottomRightIndex < spaceSize) {
+                op(particle, space[bottomRightIndex]);
+            }
+            if (bottomLeftIndex >= 0 && bottomLeftIndex < spaceSize) {
+                op(particle, space[bottomLeftIndex]);
+            }
+        };
         SPHSimulator.prototype.updateSpace = function () {
+            var spaceWidth = this.spaceWidth;
             var len = this.particles.length;
+            var placeParticle = this.placeParticle;
+            var removeParticle = this.removeParticle;
             for (var i = 0; i < len; ++i) {
                 var particle = this.particles[i];
                 var x = particle.x;
@@ -250,13 +307,12 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
                 var newSpatialCellIndex = this.getSpatialCellIndexFor(x, y);
                 var oldSpatialCellIndex = particle.spatialCellIndex;
                 if (oldSpatialCellIndex !== newSpatialCellIndex) {
-                    var newCell = this.space[newSpatialCellIndex];
-                    var oldCell = this.space[oldSpatialCellIndex];
-                    var oldCellMaxIndex = oldCell.length - 1;
-                    var oldCellIndexOfParticle = oldCell.indexOf(particle);
-                    oldCell[oldCellIndexOfParticle] = oldCell[oldCellMaxIndex];
-                    oldCell.length -= 1;
-                    newCell.push(particle);
+                    var oldX = oldSpatialCellIndex % spaceWidth;
+                    var oldY = (oldSpatialCellIndex / spaceWidth) | 0;
+                    var newX = newSpatialCellIndex % spaceWidth;
+                    var newY = (newSpatialCellIndex / spaceWidth) | 0;
+                    this.withParticleAndNeighborhood(particle, oldX, oldY, removeParticle);
+                    this.withParticleAndNeighborhood(particle, newX, newY, placeParticle);
                     particle.spatialCellIndex = newSpatialCellIndex;
                 }
             }
@@ -284,61 +340,31 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
                 neighborsCount: 0
             };
             this.particles.push(particle);
-            this.space[spatialCellIndex].push(particle);
+            this.withParticleAndNeighborhood(particle, spatialCellIndex % this.spaceWidth, (spatialCellIndex / this.spaceWidth) | 0, this.placeParticle);
         };
         SPHSimulator.prototype.getParticleNeighbors = function (originParticleIndex) {
             var maxNeighbors = this.maxParticleNeighbors;
             var spaceWidth = this.spaceWidth;
             var interactionRadiusSquared = this.interactionRadius * this.interactionRadius;
-            var emptyArray = this.emptyArray;
             var space = this.space;
-            var spaceSize = this.spaceSize;
             var tempNeighbors = this.tempNeighbors;
             tempNeighbors.length = maxNeighbors;
-            var tempPotentialNeighborArrays = this.tempPotentialNeighborArrays;
             var originParticle = this.particles[originParticleIndex];
             var originX = originParticle.x;
             var originY = originParticle.y;
-            var originCellX = originParticle.spatialCellIndex % this.spaceWidth;
-            var originCellY = (originParticle.spatialCellIndex / this.spaceWidth) | 0;
-            var originCellYMulWidth = originCellY * this.spaceWidth;
-            var leftCellX = originCellX - 1;
-            var rightCellX = originCellX + 1;
-            var topCellYMulWidth = (originCellY - 1) * this.spaceWidth;
-            var bottomCellYMulWidth = (originCellY + 1) * this.spaceWidth;
-            var centerIndex = originParticle.spatialCellIndex;
-            var topIndex = topCellYMulWidth + originCellX;
-            var rightIndex = originCellYMulWidth + rightCellX;
-            var bottomIndex = bottomCellYMulWidth + originCellX;
-            var leftIndex = originCellYMulWidth + leftCellX;
-            var topLeftIndex = topCellYMulWidth + leftCellX;
-            var topRightIndex = topCellYMulWidth + rightCellX;
-            var bottomRightIndex = bottomCellYMulWidth + rightCellX;
-            var bottomLeftIndex = bottomCellYMulWidth + leftCellX;
-            tempPotentialNeighborArrays[0] = space[centerIndex];
-            tempPotentialNeighborArrays[1] = (topIndex >= 0 && topIndex < spaceSize) ? space[topIndex] : emptyArray;
-            tempPotentialNeighborArrays[2] = (rightIndex >= 0 && rightIndex < spaceSize) ? space[rightIndex] : emptyArray;
-            tempPotentialNeighborArrays[3] = (bottomIndex >= 0 && bottomIndex < spaceSize) ? space[bottomIndex] : emptyArray;
-            tempPotentialNeighborArrays[4] = (leftIndex >= 0 && leftIndex < spaceSize) ? space[leftIndex] : emptyArray;
-            tempPotentialNeighborArrays[5] = (topLeftIndex >= 0 && topLeftIndex < spaceSize) ? space[topLeftIndex] : emptyArray;
-            tempPotentialNeighborArrays[6] = (topRightIndex >= 0 && topRightIndex < spaceSize) ? space[topRightIndex] : emptyArray;
-            tempPotentialNeighborArrays[7] = (bottomRightIndex >= 0 && bottomRightIndex < spaceSize) ? space[bottomRightIndex] : emptyArray;
-            tempPotentialNeighborArrays[8] = (bottomLeftIndex >= 0 && bottomLeftIndex < spaceSize) ? space[bottomLeftIndex] : emptyArray;
+            var cell = space[originParticle.spatialCellIndex];
             var nextAddedIndex = 0;
-            for (var i = 0; i < tempPotentialNeighborArrays.length; ++i) {
-                var potentialNeighborsArray = tempPotentialNeighborArrays[i];
-                for (var j = 0; j < potentialNeighborsArray.length; ++j) {
-                    var particle = potentialNeighborsArray[j];
-                    if (particle === originParticle)
-                        continue;
-                    var dx = particle.x - originX;
-                    var dy = particle.y - originY;
-                    if (dx * dx + dy * dy >= interactionRadiusSquared)
-                        continue;
-                    tempNeighbors[nextAddedIndex++] = particle;
-                    if (nextAddedIndex > maxNeighbors)
-                        break;
-                }
+            for (var i = 0; i < cell.length; ++i) {
+                var particle = cell[i];
+                if (particle === originParticle)
+                    continue;
+                var dx = particle.x - originX;
+                var dy = particle.y - originY;
+                if (dx * dx + dy * dy >= interactionRadiusSquared)
+                    continue;
+                tempNeighbors[nextAddedIndex++] = particle;
+                if (nextAddedIndex > maxNeighbors)
+                    break;
             }
             tempNeighbors.length = nextAddedIndex;
             return tempNeighbors;
@@ -507,7 +533,7 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
         function render() {
             context.fillStyle = 'white';
             context.clearRect(0, 0, canvas.width, canvas.height);
-            particleRenderer.render(sphSimulator.particles);
+            particleRenderer.render(sphSimulator);
         }
         var FPSCounter = (function () {
             function FPSCounter() {
