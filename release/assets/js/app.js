@@ -564,10 +564,19 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
         function update() {
             fpsCounter.tick();
             infoDiv.textContent = 'FPS: ' + fpsCounter.getFPS().toString();
+            var lastRenderSkipped = false;
+            var skipRender = false;
             var t1 = +new Date();
             var dt = (t1 - t0) / 1000;
             if (dt >= maxDelta) {
                 dt = maxDelta;
+            }
+            if (!lastRenderSkipped && dt >= 1 / 30) {
+                var skipRender = true;
+                lastRenderSkipped = true;
+            }
+            else {
+                lastRenderSkipped = false;
             }
             t0 = t1;
             accumulator += dt * 4;
@@ -581,7 +590,10 @@ define("app", ["require", "exports", "boxblur"], function (require, exports, box
                     fixedUpdate(fixedDelta);
                     accumulator -= fixedDelta;
                 }
-                render();
+                if (!skipRender) {
+                    render();
+                }
+                skipRender = false;
             }
             requestFrame(update);
         }
